@@ -29,10 +29,9 @@ public:
 
 private:
 	FScreenPassTexture HandleLensFlaresHook(FRDGBuilder& GraphBuilder,
-	                                           const FViewInfo& View,
-	                                           const FLensFlareInputs& Inputs);
+	                                        const FViewInfo& View, FScreenPassTexture Bloom, FScreenPassTextureSlice HalfResColor);
 	void RenderLensFlare(FRDGBuilder& GraphBuilder, const FViewInfo& View,
-	                     FScreenPassTextureSlice BloomTexture,
+	                     FScreenPassTexture BloomTexture,
 	                     FScreenPassTextureSlice HalfSceneColor,
 	                     FScreenPassTexture& Outputs);
 	FRDGTextureRef RenderThreshold(FRDGBuilder& GraphBuilder, FRDGTextureRef InputTexture, FIntRect& InputRect,

@@ -486,14 +486,14 @@ void FCustomLensFlareSceneViewExtension::Initialize()
 }
 
 FScreenPassTexture FCustomLensFlareSceneViewExtension::HandleLensFlaresHook(
-	FRDGBuilder& GraphBuilder, const FViewInfo& View, const FLensFlareInputs& Inputs)
+	FRDGBuilder& GraphBuilder, const FViewInfo& View, FScreenPassTexture Bloom, FScreenPassTextureSlice HalfResColor)
 {
 	FScreenPassTexture Outputs;
 	check(View.bIsViewInfo);
 	RenderLensFlare(GraphBuilder,
 	                View,
-	                Inputs.Bloom,
-	                Inputs.HalfSceneColor,
+	                Bloom,
+	                HalfResColor,
 	                Outputs);
 	return Outputs;
 }
@@ -501,7 +501,7 @@ FScreenPassTexture FCustomLensFlareSceneViewExtension::HandleLensFlaresHook(
 void FCustomLensFlareSceneViewExtension::RenderLensFlare(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
-	FScreenPassTextureSlice BloomTexture,
+	FScreenPassTexture BloomTexture,
 	FScreenPassTextureSlice HalfSceneColor,
 	FScreenPassTexture& Outputs
 )
@@ -520,7 +520,7 @@ void FCustomLensFlareSceneViewExtension::RenderLensFlare(
 	const FVector2f SceneColorViewportSize = GetInputViewportSize(SceneColorViewport.Rect, SceneColorViewport.Extent);
 
 	// Input
-	FRDGTextureRef InputTexture = BloomTexture.TextureSRV->GetParent();
+	FRDGTextureRef InputTexture = BloomTexture.Texture;
 	FIntRect InputRect = SceneColorViewport.Rect;
 
 	// Outputs
@@ -632,7 +632,7 @@ void FCustomLensFlareSceneViewExtension::RenderLensFlare(
 		FVector2f BufferSize = FVector2f(MixViewport.Width(), MixViewport.Height());
 
 		// Create buffer
-		FRDGTextureDesc Description = BloomTexture.TextureSRV->GetParent()->Desc;
+		FRDGTextureDesc Description = BloomTexture.Texture->Desc;
 		Description.Reset();
 		Description.Extent = MixViewport.Size();
 		Description.Format = PF_FloatRGBA;
@@ -670,7 +670,7 @@ void FCustomLensFlareSceneViewExtension::RenderLensFlare(
 			(GlareTexture != nullptr)
 		);
 
-		PassParameters->BloomTexture = BloomTexture.TextureSRV->GetParent();
+		PassParameters->BloomTexture = BloomTexture.Texture;
 
 		if (FlareTexture != nullptr)
 		{

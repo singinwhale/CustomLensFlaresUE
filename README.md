@@ -1,87 +1,71 @@
 ﻿
+![Lens Flares Screenshot in Editor](screenshot.png)
+
+Based on [Custom Lens-Flare Post-Process in Unreal Engine](https://www.froyok.fr/blog/2021-09-ue4-custom-lens-flare/)
+by Froyok.
+
+I took the liberty to change some things compared to the original implementation:
+- the hook into the engine is not a multicast delegate to make it more clear who is handling the lens flares.
+- there is no engine subsystem, instead there is a global scene view extension which is the standard way of extending the 
+  renderer even though none of the overloads are used.
+- I added the possibility to scale the individual leaves of the glare effect which allows for somthing similar to anamorphic lens flares.
+
+# Installation
+
 ## Required Engine Changes
 
-Patches for Unreal 5.5.2
-
-```diff
-diff --git a/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.cpp b/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.cpp
-index 3764634fb674..c66108ef3b05 100644
---- a/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.cpp
-+++ b/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.cpp
-@@ -1275,7 +1275,7 @@ void AddPostProcessingPasses(
- 			{
- 				const ELensFlareQuality LensFlareQuality = GetLensFlareQuality();
- 				const uint32 LensFlareDownsampleStageIndex = static_cast<uint32>(ELensFlareQuality::MAX) - static_cast<uint32>(LensFlareQuality) - 1;
--				Bloom = AddLensFlaresPass(GraphBuilder, View, Bloom,
-+				Bloom = AddLensFlaresPass(GraphBuilder, View, Bloom, HalfResSceneColor,
- 					LensFlareSceneDownsampleChain->GetTexture(LensFlareDownsampleStageIndex),
- 					LensFlareSceneDownsampleChain->GetFirstTexture());
- 			}
-@@ -2704,7 +2704,7 @@ void AddMobilePostProcessingPasses(FRDGBuilder& GraphBuilder, FScene* Scene, con
- 			{
- 				const ELensFlareQuality LensFlareQuality = GetLensFlareQuality();
- 				const uint32 LensFlareDownsampleStageIndex = static_cast<uint32>(ELensFlareQuality::MAX) - static_cast<uint32>(LensFlareQuality) - 1;
--				BloomUpOutputs = AddLensFlaresPass(GraphBuilder, View, BloomUpOutputs,
-+				BloomUpOutputs = AddLensFlaresPass(GraphBuilder, View, BloomUpOutputs, FScreenPassTextureSlice::CreateFromScreenPassTexture(GraphBuilder, PostProcessDownsample_Bloom[1]),
- 					FScreenPassTextureSlice::CreateFromScreenPassTexture(GraphBuilder, PostProcessDownsample_Bloom[LensFlareDownsampleStageIndex]),
- 					FScreenPassTextureSlice::CreateFromScreenPassTexture(GraphBuilder, PostProcessDownsample_Bloom[0]));
- 			}
-
-```
+Patches are for Unreal 5.5.4
 
 ```diff
 diff --git a/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessLensFlares.cpp b/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessLensFlares.cpp
-index d9cb0875fb50..cd0c19ce1b3e 100644
+index f51614e4c892..6bcbd7602080 100644
 --- a/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessLensFlares.cpp
 +++ b/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessLensFlares.cpp
-@@ -361,10 +361,12 @@ bool IsLensFlaresEnabled(const FViewInfo& View)
+@@ -361,6 +361,8 @@ bool IsLensFlaresEnabled(const FViewInfo& View)
  		Settings.LensFlareIntensity > SMALL_NUMBER);
  }
  
 +FLensFlaresHook LensFlaresHook;
++
  FScreenPassTexture AddLensFlaresPass(
  	FRDGBuilder& GraphBuilder,
  	const FViewInfo& View,
- 	FScreenPassTexture Bloom,
-+	FScreenPassTextureSlice HalfSceneColor,
- 	FScreenPassTextureSlice QualitySceneDownsample,
- 	FScreenPassTextureSlice DefaultSceneDownsample)
- {
-@@ -416,5 +418,10 @@ FScreenPassTexture AddLensFlaresPass(
+@@ -415,5 +417,10 @@ FScreenPassTexture AddLensFlaresPass(
  		LensFlareInputs.bCompositeWithBloom = false;
  	}
  
 +	if (LensFlaresHook.IsBound())
 +	{
-+		return LensFlaresHook.Execute(GraphBuilder, View, LensFlareInputs);
++		return LensFlaresHook.Execute(GraphBuilder, View, Bloom, DefaultSceneDownsample);
 +	}
 +
  	return AddLensFlaresPass(GraphBuilder, View, LensFlareInputs);
  }
 \ No newline at end of file
-
 ```
 
 ```diff
 diff --git a/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessLensFlares.h b/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessLensFlares.h
-index 378b131960cf..d3049388024d 100644
+index 378b131960cf..4dfad61ac66c 100644
 --- a/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessLensFlares.h
 +++ b/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessLensFlares.h
-@@ -60,10 +60,14 @@ using FLensFlareOutputs = FScreenPassTexture;
+@@ -60,6 +60,9 @@ using FLensFlareOutputs = FScreenPassTexture;
  
  bool IsLensFlaresEnabled(const FViewInfo& View);
  
-+DECLARE_DELEGATE_RetVal_ThreeParams( FScreenPassTexture, FLensFlaresHook, FRDGBuilder&, const FViewInfo&, const FLensFlareInputs&);
++DECLARE_DELEGATE_RetVal_FourParams( FScreenPassTexture, FLensFlaresHook, FRDGBuilder&, const FViewInfo&, FScreenPassTexture, FScreenPassTextureSlice);
 +extern RENDERER_API FLensFlaresHook LensFlaresHook;
 +
  // Helper function which pulls inputs from the post process settings of the view.
  FScreenPassTexture AddLensFlaresPass(
  	FRDGBuilder& GraphBuilder,
- 	const FViewInfo& View,
- 	FScreenPassTexture Bloom,
-+	FScreenPassTextureSlice HalfSceneColor,
- 	FScreenPassTextureSlice QualitySceneDownsample,
- 	FScreenPassTextureSlice DefaultSceneDownsample);
-\ No newline at end of file
+```
 
+## Ini Changes
+
+Reference a settings data asset in your `DefaultGame.ini`. There is one shipped with the project that you can put into your ini file. 
+
+```ini
+[CustomLensFlareSceneViewExtension]
+ConfigPath=/CustomLensFlare/DA_LensFlaresConfig.DA_LensFlaresConfig
 ```
