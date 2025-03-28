@@ -1,0 +1,39 @@
+#include "Shared.ush"
+
+float4 GhostColors[8];
+DECLARE_SCALAR_ARRAY(float, GhostScales, 8);
+float Intensity;
+
+void GhostsPS(
+	in noperspective float4 UVAndScreenPos : TEXCOORD0,
+	out float4 OutColor : SV_Target0 )
+{
+	float2 UV = UVAndScreenPos.xy;
+	float3 Color = float3( 0.0f, 0.0f, 0.0f );
+
+	for( int i = 0; i < 8; i++ )
+	{
+		// Skip ghost if size is basically 0
+		if( abs(GhostColors[i].a * GET_SCALAR_ARRAY_ELEMENT(GhostScales, i)) > 0.0001f )
+		{
+			float2 NewUV = (UV - 0.5f) * GET_SCALAR_ARRAY_ELEMENT(GhostScales, i);
+
+			// Local mask
+			float DistanceMask = 1.0f - distance( float2(0.0f, 0.0f), NewUV );
+			float Mask  = smoothstep( 0.5f, 0.9f, DistanceMask );
+			float Mask2 = smoothstep( 0.75f, 1.0f, DistanceMask ) * 0.95f + 0.05f;
+
+			Color += Texture2DSample(InputTexture, InputSampler, NewUV + 0.5f ).rgb
+					* GhostColors[i].rgb
+					* GhostColors[i].a
+					* Mask * Mask2;
+		}
+	}
+
+	float2 ScreenPos = UVAndScreenPos.zw;
+	float ScreenborderMask = DiscMask(ScreenPos * 0.9f);
+
+	OutColor.rgb = Color * ScreenborderMask * Intensity;
+
+	OutColor.a = 0;
+}

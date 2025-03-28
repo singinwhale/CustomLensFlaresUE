@@ -1,0 +1,62 @@
+#include "Shared.ush"
+
+float2 InputSize;
+float ThresholdLevel;
+float ThresholdRange;
+
+void DownsampleThresholdPS(
+    in noperspective float4 UVAndScreenPos : TEXCOORD0,
+    out float3 OutColor : SV_Target0 )
+{
+    float2 InPixelSize = 1.0f / InputSize;
+    float2 UV = UVAndScreenPos.xy;
+    float3 Color = float3( 0.0f, 0.0f ,0.0f );
+
+    // 4 central samples
+    float2 CenterUV_1 = UV + InPixelSize * float2(-1.0f, 1.0f);
+    float2 CenterUV_2 = UV + InPixelSize * float2( 1.0f, 1.0f);
+    float2 CenterUV_3 = UV + InPixelSize * float2(-1.0f,-1.0f);
+    float2 CenterUV_4 = UV + InPixelSize * float2( 1.0f,-1.0f);
+
+    Color += Texture2DSample(InputTexture, InputSampler, CenterUV_1 ).rgb;
+    Color += Texture2DSample(InputTexture, InputSampler, CenterUV_2 ).rgb;
+    Color += Texture2DSample(InputTexture, InputSampler, CenterUV_3 ).rgb;
+    Color += Texture2DSample(InputTexture, InputSampler, CenterUV_4 ).rgb;
+
+    OutColor.rgb = (Color / 4.0f) * 0.5f;
+
+    // 3 row samples
+    Color = float3( 0.0f, 0.0f ,0.0f );
+
+    float2 RowUV_1 = UV + InPixelSize * float2(-2.0f, 2.0f);
+    float2 RowUV_2 = UV + InPixelSize * float2( 0.0f, 2.0f);
+    float2 RowUV_3 = UV + InPixelSize * float2( 2.0f, 2.0f);
+
+    float2 RowUV_4 = UV + InPixelSize * float2(-2.0f, 0.0f);
+    float2 RowUV_5 = UV + InPixelSize * float2( 0.0f, 0.0f);
+    float2 RowUV_6 = UV + InPixelSize * float2( 2.0f, 0.0f);
+
+    float2 RowUV_7 = UV + InPixelSize * float2(-2.0f,-2.0f);
+    float2 RowUV_8 = UV + InPixelSize * float2( 0.0f,-2.0f);
+    float2 RowUV_9 = UV + InPixelSize * float2( 2.0f,-2.0f);
+
+    Color += Texture2DSample(InputTexture, InputSampler, RowUV_1 ).rgb;
+    Color += Texture2DSample(InputTexture, InputSampler, RowUV_2 ).rgb;
+    Color += Texture2DSample(InputTexture, InputSampler, RowUV_3 ).rgb;
+
+    Color += Texture2DSample(InputTexture, InputSampler, RowUV_4 ).rgb;
+    Color += Texture2DSample(InputTexture, InputSampler, RowUV_5 ).rgb;
+    Color += Texture2DSample(InputTexture, InputSampler, RowUV_6 ).rgb;
+
+    Color += Texture2DSample(InputTexture, InputSampler, RowUV_7 ).rgb;
+    Color += Texture2DSample(InputTexture, InputSampler, RowUV_8 ).rgb;
+    Color += Texture2DSample(InputTexture, InputSampler, RowUV_9 ).rgb;
+
+    OutColor.rgb += (Color / 9.0f) * 0.5f;
+
+    // Threshold
+    float Luminance = dot(OutColor.rgb, 1);
+    float ThresholdScale = saturate( (Luminance - ThresholdLevel) / ThresholdRange );
+
+    OutColor.rgb *= ThresholdScale;
+}
