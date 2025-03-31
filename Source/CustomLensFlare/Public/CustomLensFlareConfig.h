@@ -35,7 +35,7 @@ class CUSTOMLENSFLARE_API UCustomLensFlareConfig : public UDataAsset
         FLinearColor Tint = FLinearColor(1.0f, 0.85f, 0.7f, 1.0f);
 
         UPROPERTY(EditAnywhere, Category="General")
-        UTexture2D* Gradient = nullptr;
+        TObjectPtr<UTexture2D> Gradient = nullptr;
 
 
         UPROPERTY(EditAnywhere, Category="Threshold", meta=(UIMin = "0.0", UIMax = "10.0"))
@@ -108,5 +108,5 @@ class CUSTOMLENSFLARE_API UCustomLensFlareConfig : public UDataAsset
         FLinearColor GlareTint = FLinearColor(1.0f, 1.0f, 1.0f, 1.0f);
 
         UPROPERTY(EditAnywhere, Category="Glare")
-        UTexture2D* GlareLineMask = nullptr;
+        TObjectPtr<UTexture2D> GlareLineMask = nullptr;
 };

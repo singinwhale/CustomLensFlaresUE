@@ -5,8 +5,8 @@
 #include "CoreMinimal.h"
 #include "ScreenPass.h"
 #include "Runtime/Engine/Public/SceneViewExtension.h"
+#include "CustomLensFlareConfig.h"
 
-class UCustomLensFlareConfig;
 struct FLensFlareInputs;
 
 /**
