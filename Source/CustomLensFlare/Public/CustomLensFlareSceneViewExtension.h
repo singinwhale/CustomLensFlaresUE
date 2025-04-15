@@ -35,14 +35,19 @@ private:
 	                     FScreenPassTexture BloomTexture,
 	                     FScreenPassTextureSlice HalfSceneColor,
 	                     FScreenPassTexture& Outputs);
-	FRDGTextureRef RenderThreshold(FRDGBuilder& GraphBuilder, FRDGTextureRef InputTexture, FIntRect& InputRect,
-	                               const FViewInfo& View);
-	FRDGTextureRef RenderFlare(FRDGBuilder& GraphBuilder, FRDGTextureRef InputTexture, FIntRect& InputRect,
-	                           const FViewInfo& View);
-	FRDGTextureRef RenderGlare(FRDGBuilder& GraphBuilder, FRDGTextureRef InputTexture, FIntRect& InputRect,
-	                           const FViewInfo& View);
-	FRDGTextureRef RenderBlur(FRDGBuilder& GraphBuilder, FRDGTextureRef InputTexture, const FViewInfo& View,
-	                          const FIntRect& Viewport, int BlurSteps);
+	FScreenPassTexture RenderThreshold(FRDGBuilder& GraphBuilder,
+		FScreenPassTexture InputTexture,
+		const FViewInfo& View);
+	FScreenPassTexture RenderFlare(FRDGBuilder& GraphBuilder,
+		FScreenPassTexture& BloomTexture,
+		const FViewInfo& View);
+	FScreenPassTexture RenderGlare(FRDGBuilder& GraphBuilder,
+		FScreenPassTexture& BloomTexture,
+		const FViewInfo& View);
+	FScreenPassTexture RenderBlur(FRDGBuilder& GraphBuilder,
+		FScreenPassTexture InputTexture,
+		const FViewInfo& View,
+		int BlurSteps);
 
 	TStrongObjectPtr<UCustomLensFlareConfig> Config;
 
