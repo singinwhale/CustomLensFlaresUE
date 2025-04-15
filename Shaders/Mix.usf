@@ -1,74 +1,85 @@
 #include "Shared.ush"
 
-Texture2D BloomTexture;
-Texture2D GlareTexture;
-Texture2D GradientTexture;
-SamplerState GradientSampler;
-
-float Intensity;
-float4 Tint;
-float2 BufferSize;
-float2 PixelSize;
+// Common
 int3 MixPass;
 
+// Bloom
+Texture2D BloomTexture;
+float BloomIntensity;
+
+// Glare
+Texture2D GlareTexture;
+float2 GlarePixelSize;
+
+// Flare
+float FlareIntensity;
+float4 FlareTint;
+Texture2D FlareGradientTexture;
+SamplerState FlareGradientSampler;
+
+
 void MixPS(
-	in noperspective float4 UVAndScreenPos : TEXCOORD0,
-	out float4 OutColor : SV_Target0 )
+    in noperspective float4 UVAndScreenPos : TEXCOORD0,
+    out float4 OutColor : SV_Target0 )
 {
-	float2 UV = UVAndScreenPos.xy;
-	OutColor.rgb = float3( 0.0f, 0.0f, 0.0f );
-	OutColor.a = 0;
+    float2 UV = UVAndScreenPos.xy;
+    OutColor.rgb = float3( 0.0f, 0.0f, 0.0f );
+    OutColor.a = 0;
 
-	//---------------------------------------
-	// Add Bloom
-	//---------------------------------------
-	if( MixPass.x )
-	{
-		OutColor.rgb += Texture2DSample( BloomTexture, InputSampler, UV * InputViewportSize ).rgb;
-	}
+    //---------------------------------------
+    // Add Bloom
+    //---------------------------------------
+    if( MixPass.x )
+    {
+        OutColor.rgb += Texture2DSample( BloomTexture, InputSampler, UV ).rgb * BloomIntensity;
+    }
 
-	//---------------------------------------
-	// Add Flares, Glares mixed with Tint/Gradient
-	//---------------------------------------
-	float3 Flares = float3( 0.0f, 0.0f, 0.0f );
+    //---------------------------------------
+    // Add Flares, Glares mixed with Tint/Gradient
+    //---------------------------------------
+    float3 Flares = float3( 0.0f, 0.0f, 0.0f );
 
-	// Flares
-	if( MixPass.y )
-	{
-		Flares += Texture2DSample( InputTexture, InputSampler, UV ).rgb;
-	}
+    // Flares
+    if( MixPass.y )
+    {
+        Flares = Texture2DSample( InputTexture, InputSampler, UV ).rgb;
+    }
 
-	// Glares
-	// Do 4 samples in a square pattern to smooth the
-	// glare pass result and hide a few artifacts.
-	if( MixPass.z )
-	{
-		const float2 Coords[4] = {
-			float2(-1.0f, 1.0f),
-			float2( 1.0f, 1.0f),
-			float2(-1.0f,-1.0f),
-			float2( 1.0f,-1.0f)
-		};
+    // Glares
+    if( MixPass.z )
+    {
+        const float2 Coords[4] = {
+            float2(-1.0f, 1.0f),
+            float2( 1.0f, 1.0f),
+            float2(-1.0f,-1.0f),
+            float2( 1.0f,-1.0f)
+        };
 
-		float3 GlareColor = float3( 0.0f, 0.0f, 0.0f );
+        float3 GlareColor = float3( 0.0f, 0.0f, 0.0f );
 
-		UNROLL
-		for( int i = 0; i < 4; i++ )
-		{
-			float2 OffsetUV = UV + PixelSize * Coords[i];
-			GlareColor.rgb += 0.25f * Texture2DSample( GlareTexture, InputSampler, OffsetUV ).rgb;
-		}
+        UNROLL
+        for( int i = 0; i < 4; i++ )
+        {
+            float2 OffsetUV = UV + GlarePixelSize * Coords[i];
+            GlareColor.rgb += 0.25f * Texture2DSample( GlareTexture, InputSampler, OffsetUV ).rgb;
+        }
 
-		Flares += GlareColor;
-	}
+        Flares += GlareColor;
+    }
 
-	const float2 Center = float2( 0.5f, 0.5f );
-	float2 GradientUV = float2(
-		saturate( distance(UV, Center) * 2.0f ),
-		0.0f
-	);
-	float3 Gradient = Texture2DSample( GradientTexture, GradientSampler, GradientUV ).rgb;
+    // Colored gradient
+    const float2 Center = float2( 0.5f, 0.5f );
+    float2 GradientUV = float2(
+        saturate( distance(UV, Center) * 2.0f ),
+        0.0f
+    );
 
-	// Final mix
-	OutColor.rgb += Flares * Gradient * Tint.rgb * Intensity;
+    float3 Gradient = Texture2DSample( FlareGradientTexture, FlareGradientSampler, GradientUV ).rgb;
+
+    Flares *= Gradient * FlareTint.rgb * FlareIntensity;
+
+    //---------------------------------------
+    // Add Glare and Flares to final mix
+    //---------------------------------------
+    OutColor.rgb += Flares;
 }
