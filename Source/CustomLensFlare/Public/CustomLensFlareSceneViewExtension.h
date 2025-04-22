@@ -28,21 +28,17 @@ public:
 	void Initialize();
 
 private:
-	FScreenPassTexture HandleLensFlaresHook(FRDGBuilder& GraphBuilder,const FViewInfo& View, FScreenPassTexture Bloom, FScreenPassTextureSlice HalfResColor);
 	FScreenPassTexture HandleBloomFlaresHook(FRDGBuilder& GraphBuilder,const FViewInfo& View, FScreenPassTextureSlice SceneColor, const class FSceneDownsampleChain& DownsampleChain);
 	void InitStates();
-	void RenderLensFlare(FRDGBuilder& GraphBuilder, const FViewInfo& View,
-	                     FScreenPassTexture BloomTexture,
-	                     FScreenPassTextureSlice HalfSceneColor,
-	                     FScreenPassTexture& Outputs);
+
 	FScreenPassTexture RenderThreshold(FRDGBuilder& GraphBuilder,
 		FScreenPassTexture InputTexture,
 		const FViewInfo& View);
 	FScreenPassTexture RenderFlare(FRDGBuilder& GraphBuilder,
-		FScreenPassTexture& BloomTexture,
+		FScreenPassTextureSlice& BloomTexture,
 		const FViewInfo& View);
 	FScreenPassTexture RenderGlare(FRDGBuilder& GraphBuilder,
-		FScreenPassTexture& BloomTexture,
+		FScreenPassTextureSlice& BloomTexture,
 		const FViewInfo& View);
 	FScreenPassTexture RenderBlur(FRDGBuilder& GraphBuilder,
 		FScreenPassTexture InputTexture,
@@ -64,32 +60,32 @@ private:
 
 	struct FBloomFlareProcess
 	{
-		FScreenPassTexture RenderBloom(
+		FScreenPassTextureSlice RenderBloom(
 			FRDGBuilder& GraphBuilder,
 			const FViewInfo& View,
 			const FScreenPassTextureSlice& SceneColor,
 			int32 PassAmount
 		);
 
-		FRDGTextureRef RenderDownsample(
+		FScreenPassTextureSlice RenderDownsample(
 			FRDGBuilder& GraphBuilder,
 			const FString& PassName,
 			const FViewInfo& View,
-			FRDGTextureRef InputTexture,
+			FScreenPassTextureSlice InputTexture,
 			const FIntRect& Viewport
 		);
 
-		FRDGTextureRef RenderUpsampleCombine(
+		FScreenPassTextureSlice RenderUpsampleCombine(
 			FRDGBuilder& GraphBuilder,
 			const FString& PassName,
 			const FViewInfo& View,
-			const FScreenPassTexture& InputTexture,
-			const FScreenPassTexture& PreviousTexture,
+			const FScreenPassTextureSlice& InputTexture,
+			const FScreenPassTextureSlice& PreviousTexture,
 			float Radius
 		);
 
 		FCustomLensFlareSceneViewExtension& OwningExtension;
-		TArray< FScreenPassTexture > MipMapsDownsample;
-		TArray< FScreenPassTexture > MipMapsUpsample;
+		TArray< FScreenPassTextureSlice > MipMapsDownsample;
+		TArray< FScreenPassTextureSlice > MipMapsUpsample;
 	};
 };
