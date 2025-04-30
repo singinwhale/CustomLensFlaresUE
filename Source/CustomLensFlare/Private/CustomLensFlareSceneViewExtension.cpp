@@ -252,29 +252,6 @@ namespace
 
 	IMPLEMENT_GLOBAL_SHADER(FLensFlareRescalePS, "/Plugin/CustomLensFlare/Rescale.usf", "RescalePS", SF_Pixel);
 
-	// Downsample shader
-	class FDownsampleThresholdPS : public FGlobalShader
-	{
-	public:
-		DECLARE_GLOBAL_SHADER(FDownsampleThresholdPS);
-		SHADER_USE_PARAMETER_STRUCT(FDownsampleThresholdPS, FGlobalShader);
-
-		BEGIN_SHADER_PARAMETER_STRUCT(FParameters,)
-			SHADER_PARAMETER_STRUCT_INCLUDE(FCustomLensFlarePassParameters, Pass)
-			SHADER_PARAMETER_SAMPLER(SamplerState, InputSampler)
-			SHADER_PARAMETER(FVector4f, InputSizeAndInvInputSize)
-			SHADER_PARAMETER(float, ThresholdLevel)
-			SHADER_PARAMETER(float, ThresholdRange)
-		END_SHADER_PARAMETER_STRUCT()
-
-		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-		{
-			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
-		}
-	};
-
-	IMPLEMENT_GLOBAL_SHADER(FDownsampleThresholdPS, "/Plugin/CustomLensFlare/DownsampleThreshold.usf", "DownsampleThresholdPS", SF_Pixel);
-
 	// Bloom downsample
 	class FDownsamplePS : public FGlobalShader
 	{
@@ -287,6 +264,8 @@ namespace
 			SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D, InputTexture)
 			SHADER_PARAMETER_SAMPLER(SamplerState, InputSampler)
 			SHADER_PARAMETER(FVector4f, InputSizeAndInvInputSize)
+			SHADER_PARAMETER(float, ThresholdLevel)
+			SHADER_PARAMETER(float, ThresholdRange)
 		END_SHADER_PARAMETER_STRUCT()
 
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -605,7 +584,7 @@ FScreenPassTexture FCustomLensFlareSceneViewExtension::HandleBloomFlaresHook(FRD
 	if (MinDownsampleSize >= 1.0f)
 	{
 		int32 MinScreenDim = SceneColor.ViewRect.Size().GetMin();
-		int32 DesiredPassAmount = FMath::CeilLogTwo(MinScreenDim / MinDownsampleSize);
+		int32 DesiredPassAmount = FMath::Log2(MinScreenDim / MinDownsampleSize);
 		PassAmount = FMath::Min(PassAmount, DesiredPassAmount);
 	} 
 
@@ -686,7 +665,7 @@ FScreenPassTexture FCustomLensFlareSceneViewExtension::HandleBloomFlaresHook(FRD
 
 		const FString MixPassName(TEXT("Mix"));
 
-		float BloomIntensity = Config->Intensity;
+		float BloomIntensity = Config->Intensity * View.FinalPostProcessSettings.BloomIntensity;
 
 		// If the internal blending for the upsample pass is additive
 		// (aka not using the lerp) then uncomment this line to
@@ -813,11 +792,11 @@ FScreenPassTexture FCustomLensFlareSceneViewExtension::RenderThreshold(FRDGBuild
 
 		// Render shader
 		TShaderMapRef<FCustomScreenPassVS> VertexShader(View.ShaderMap);
-		TShaderMapRef<FDownsampleThresholdPS> PixelShader(View.ShaderMap);
+		TShaderMapRef<FDownsamplePS> PixelShader(View.ShaderMap);
 
-		FDownsampleThresholdPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FDownsampleThresholdPS::FParameters>();
-		PassParameters->Pass.InputTexture = InputTexture.Texture;
-		PassParameters->Pass.RenderTargets[0] = FRenderTargetBinding(Texture, ERenderTargetLoadAction::ENoAction);
+		FDownsamplePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FDownsamplePS::FParameters>();
+		PassParameters->InputTexture = GraphBuilder.CreateSRV(FRDGTextureSRVDesc(InputTexture.Texture));
+		PassParameters->RenderTargets[0] = FRenderTargetBinding(Texture, ERenderTargetLoadAction::ENoAction);
 		PassParameters->InputSampler = BilinearClampSampler;
 		PassParameters->InputSizeAndInvInputSize = SizeToSizeAndInvSize(InputTexture.ViewRect.Size());
 		PassParameters->ThresholdLevel = Config->ThresholdLevel;
@@ -1366,6 +1345,8 @@ FScreenPassTextureSlice FCustomLensFlareSceneViewExtension::FBloomFlareProcess::
 	PassParameters->InputSampler = OwningExtension.BilinearBorderSampler;
 	FIntVector ParentPixelSize = InputTexture.TextureSRV->GetParent()->Desc.GetSize();
 	PassParameters->InputSizeAndInvInputSize = SizeToSizeAndInvSize(ParentPixelSize);
+	PassParameters->ThresholdLevel = View.FinalPostProcessSettings.BloomThreshold;
+	PassParameters->ThresholdRange = OwningExtension.Config->ThresholdRange;
 
 	DrawSplitResolutionPass(
 		GraphBuilder,
