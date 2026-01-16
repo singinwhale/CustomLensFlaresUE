@@ -8,12 +8,16 @@ public class CustomLensFlare : ModuleRules
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		PrivateIncludePaths.Add(EngineDirectory + "/Source/Runtime/Renderer/Private");
+		PrivateIncludePaths.AddRange(new string[]
+		{
+			EngineDirectory + "/Source/Runtime/Renderer/Private",
+			EngineDirectory + "/Source/Runtime/Renderer/Internal",
+		});
 
-			PublicDependencyModuleNames.AddRange(
+		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"Core", 
+				"Core",
 				"Renderer",
 			}
 		);

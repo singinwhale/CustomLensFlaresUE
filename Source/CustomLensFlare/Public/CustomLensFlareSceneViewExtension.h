@@ -28,20 +28,22 @@ public:
 	void Initialize();
 
 private:
-	FScreenPassTexture HandleLensFlaresHook(FRDGBuilder& GraphBuilder,
-	                                        const FViewInfo& View, FScreenPassTexture Bloom, FScreenPassTextureSlice HalfResColor);
-	void RenderLensFlare(FRDGBuilder& GraphBuilder, const FViewInfo& View,
-	                     FScreenPassTexture BloomTexture,
-	                     FScreenPassTextureSlice HalfSceneColor,
-	                     FScreenPassTexture& Outputs);
-	FRDGTextureRef RenderThreshold(FRDGBuilder& GraphBuilder, FRDGTextureRef InputTexture, FIntRect& InputRect,
-	                               const FViewInfo& View);
-	FRDGTextureRef RenderFlare(FRDGBuilder& GraphBuilder, FRDGTextureRef InputTexture, FIntRect& InputRect,
-	                           const FViewInfo& View);
-	FRDGTextureRef RenderGlare(FRDGBuilder& GraphBuilder, FRDGTextureRef InputTexture, FIntRect& InputRect,
-	                           const FViewInfo& View);
-	FRDGTextureRef RenderBlur(FRDGBuilder& GraphBuilder, FRDGTextureRef InputTexture, const FViewInfo& View,
-	                          const FIntRect& Viewport, int BlurSteps);
+	FScreenPassTexture HandleBloomFlaresHook(FRDGBuilder& GraphBuilder,const FViewInfo& View, FScreenPassTextureSlice SceneColor, const class FTextureDownsampleChain& DownsampleChain);
+	void InitStates();
+
+	FScreenPassTexture RenderThreshold(FRDGBuilder& GraphBuilder,
+		FScreenPassTexture InputTexture,
+		const FViewInfo& View);
+	FScreenPassTexture RenderFlare(FRDGBuilder& GraphBuilder,
+		FScreenPassTextureSlice& BloomTexture,
+		const FViewInfo& View);
+	FScreenPassTexture RenderGlare(FRDGBuilder& GraphBuilder,
+		FScreenPassTextureSlice& BloomTexture,
+		const FViewInfo& View);
+	FScreenPassTexture RenderBlur(FRDGBuilder& GraphBuilder,
+		FScreenPassTexture InputTexture,
+		const FViewInfo& View,
+		int BlurSteps);
 
 	TStrongObjectPtr<UCustomLensFlareConfig> Config;
 
@@ -55,4 +57,35 @@ private:
 	FRHISamplerState* BilinearBorderSampler = nullptr;
 	FRHISamplerState* BilinearRepeatSampler = nullptr;
 	FRHISamplerState* NearestRepeatSampler = nullptr;
+
+	struct FBloomFlareProcess
+	{
+		FScreenPassTextureSlice RenderBloom(
+			FRDGBuilder& GraphBuilder,
+			const FViewInfo& View,
+			const FScreenPassTextureSlice& SceneColor,
+			int32 PassAmount
+		);
+
+		FScreenPassTextureSlice RenderDownsample(
+			FRDGBuilder& GraphBuilder,
+			const FString& PassName,
+			const FViewInfo& View,
+			FScreenPassTextureSlice InputTexture,
+			const FIntRect& Viewport
+		);
+
+		FScreenPassTextureSlice RenderUpsampleCombine(
+			FRDGBuilder& GraphBuilder,
+			const FString& PassName,
+			const FViewInfo& View,
+			const FScreenPassTextureSlice& InputTexture,
+			const FScreenPassTextureSlice& PreviousTexture,
+			float Radius
+		);
+
+		FCustomLensFlareSceneViewExtension& OwningExtension;
+		TArray< FScreenPassTextureSlice > MipMapsDownsample;
+		TArray< FScreenPassTextureSlice > MipMapsUpsample;
+	};
 };
