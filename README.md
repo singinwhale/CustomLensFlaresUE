@@ -17,48 +17,59 @@ I took the liberty to change some things compared to the original implementation
 Patches are for Unreal 5.5.4
 
 ```diff
-diff --git a/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessLensFlares.cpp b/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessLensFlares.cpp
-index f51614e4c892..6bcbd7602080 100644
---- a/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessLensFlares.cpp
-+++ b/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessLensFlares.cpp
-@@ -361,6 +361,8 @@ bool IsLensFlaresEnabled(const FViewInfo& View)
- 		Settings.LensFlareIntensity > SMALL_NUMBER);
- }
- 
-+FLensFlaresHook LensFlaresHook;
+--- a/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.cpp
++++ b/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.cpp
+@@ -173,8 +173,19 @@
+        TEXT(" 3: enable only for view with texture visualized through Vis / VisualizeTexture command, to avoid debug clutter in other views.\n"),
+        ECVF_RenderThreadSafe);
+ #endif
 +
- FScreenPassTexture AddLensFlaresPass(
- 	FRDGBuilder& GraphBuilder,
- 	const FViewInfo& View,
-@@ -415,5 +417,10 @@ FScreenPassTexture AddLensFlaresPass(
- 		LensFlareInputs.bCompositeWithBloom = false;
- 	}
- 
-+	if (LensFlaresHook.IsBound())
-+	{
-+		return LensFlaresHook.Execute(GraphBuilder, View, Bloom, DefaultSceneDownsample);
-+	}
-+
- 	return AddLensFlaresPass(GraphBuilder, View, LensFlareInputs);
++TAutoConsoleVariable<int32> CVarCustomBloomFlareMode(
++       TEXT("r.PostProcessing.CustomBloomFlareMode"),
++       1,
++       TEXT("If set to 1, use external Bloom/Lens-flares rendering if available"),
++       ECVF_Scalability | ECVF_RenderThreadSafe);
  }
-\ No newline at end of file
+
++FLensFlaresHook BloomFlaresHook;
++// --
++
++
+ #if WITH_EDITOR
+ static void AddGBufferPicking(FRDGBuilder& GraphBuilder, const FViewInfo& View, const TRDGUniformBufferRef<FSceneTextureUniformParameters>& SceneTextures);
+ #endif
+@@ -1187,6 +1198,13 @@
+                FRDGBufferRef SceneColorApplyParameters = nullptr;
+                if (bBloomEnabled)
+                {
++                       if ((CVarCustomBloomFlareMode.GetValueOnAnyThread() > 0) && BloomFlaresHook.IsBound())
++                       {
++                               Bloom = BloomFlaresHook.Execute(GraphBuilder, View, SceneColorSlice, SceneDownsampleChain);
++                       }
++                       else
++                       {
+                        const FTextureDownsampleChain* LensFlareSceneDownsampleChain;
+
+                        FTextureDownsampleChain BloomDownsampleChain;
+
 ```
 
 ```diff
-diff --git a/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessLensFlares.h b/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessLensFlares.h
-index 378b131960cf..4dfad61ac66c 100644
---- a/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessLensFlares.h
-+++ b/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessLensFlares.h
-@@ -60,6 +60,9 @@ using FLensFlareOutputs = FScreenPassTexture;
- 
- bool IsLensFlaresEnabled(const FViewInfo& View);
- 
-+DECLARE_DELEGATE_RetVal_FourParams( FScreenPassTexture, FLensFlaresHook, FRDGBuilder&, const FViewInfo&, FScreenPassTexture, FScreenPassTextureSlice);
-+extern RENDERER_API FLensFlaresHook LensFlaresHook;
+--- a/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.h
++++ b/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.h
+@@ -20,6 +20,13 @@
+        struct FRasterResults;
+ }
+
 +
- // Helper function which pulls inputs from the post process settings of the view.
- FScreenPassTexture AddLensFlaresPass(
- 	FRDGBuilder& GraphBuilder,
++DECLARE_DELEGATE_RetVal_FourParams( FScreenPassTexture, FLensFlaresHook, FRDGBuilder&, const FViewInfo&, FScreenPassTextureSlice, const class FTextureDownsampleChain&);
++// Delegate that you can bind to override the bloom rendering process in the engine and provide your own implementation.
++extern RENDERER_API FLensFlaresHook BloomFlaresHook;
++// --
++
+ // Returns whether the full post process pipeline is enabled. Otherwise, the minimal set of operations are performed.
+ bool IsPostProcessingEnabled(const FViewInfo& View);
+
 ```
 
 ## Ini Changes
