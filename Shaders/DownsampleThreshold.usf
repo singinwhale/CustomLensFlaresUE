@@ -1,62 +1,98 @@
 #include "Shared.ush"
 
-float2 InputSize;
+float4 InputSizeAndInvInputSize;
 float ThresholdLevel;
 float ThresholdRange;
 
-void DownsampleThresholdPS(
-    in noperspective float4 UVAndScreenPos : TEXCOORD0,
-    out float3 OutColor : SV_Target0 )
+float3 Downsample( Texture2D Texture, SamplerState Sampler, float2 UV, float2 PixelSize )
 {
-    float2 InPixelSize = 1.0f / InputSize;
-    float2 UV = UVAndScreenPos.xy;
-    float3 Color = float3( 0.0f, 0.0f ,0.0f );
+	const float2 Coords[13] = {
+		float2( -1.0f,  1.0f ), float2(  1.0f,  1.0f ),
+		float2( -1.0f, -1.0f ), float2(  1.0f, -1.0f ),
 
-    // 4 central samples
-    float2 CenterUV_1 = UV + InPixelSize * float2(-1.0f, 1.0f);
-    float2 CenterUV_2 = UV + InPixelSize * float2( 1.0f, 1.0f);
-    float2 CenterUV_3 = UV + InPixelSize * float2(-1.0f,-1.0f);
-    float2 CenterUV_4 = UV + InPixelSize * float2( 1.0f,-1.0f);
+		float2(-2.0f, 2.0f), float2( 0.0f, 2.0f), float2( 2.0f, 2.0f),
+		float2(-2.0f, 0.0f), float2( 0.0f, 0.0f), float2( 2.0f, 0.0f),
+		float2(-2.0f,-2.0f), float2( 0.0f,-2.0f), float2( 2.0f,-2.0f)
+	};
 
-    Color += Texture2DSample(InputTexture, InputSampler, CenterUV_1 ).rgb;
-    Color += Texture2DSample(InputTexture, InputSampler, CenterUV_2 ).rgb;
-    Color += Texture2DSample(InputTexture, InputSampler, CenterUV_3 ).rgb;
-    Color += Texture2DSample(InputTexture, InputSampler, CenterUV_4 ).rgb;
 
-    OutColor.rgb = (Color / 4.0f) * 0.5f;
+	const float Weights[13] = {
+		// 4 samples
+		// (1 / 4) * 0.5f = 0.125f
+		0.125f, 0.125f,
+		0.125f, 0.125f,
 
-    // 3 row samples
-    Color = float3( 0.0f, 0.0f ,0.0f );
+		// 9 samples
+		// (1 / 9) * 0.5f
+		0.0555555f, 0.0555555f, 0.0555555f,
+		0.0555555f, 0.0555555f, 0.0555555f,
+		0.0555555f, 0.0555555f, 0.0555555f
+	};
 
-    float2 RowUV_1 = UV + InPixelSize * float2(-2.0f, 2.0f);
-    float2 RowUV_2 = UV + InPixelSize * float2( 0.0f, 2.0f);
-    float2 RowUV_3 = UV + InPixelSize * float2( 2.0f, 2.0f);
+	float3 OutColor = float3( 0.0f, 0.0f ,0.0f );
 
-    float2 RowUV_4 = UV + InPixelSize * float2(-2.0f, 0.0f);
-    float2 RowUV_5 = UV + InPixelSize * float2( 0.0f, 0.0f);
-    float2 RowUV_6 = UV + InPixelSize * float2( 2.0f, 0.0f);
+	UNROLL
+	for( int i = 0; i < 13; i++ )
+	{
+		float2 CurrentUV = UV + Coords[i] * PixelSize;
+		OutColor += Weights[i] * Texture2DSample(Texture, Sampler, CurrentUV ).rgb;
+	}
 
-    float2 RowUV_7 = UV + InPixelSize * float2(-2.0f,-2.0f);
-    float2 RowUV_8 = UV + InPixelSize * float2( 0.0f,-2.0f);
-    float2 RowUV_9 = UV + InPixelSize * float2( 2.0f,-2.0f);
+	
+	// Threshold
+	float Luminance = dot(OutColor.rgb, 1);
+	float ThresholdScale = saturate( (Luminance - ThresholdLevel) / ThresholdRange );
 
-    Color += Texture2DSample(InputTexture, InputSampler, RowUV_1 ).rgb;
-    Color += Texture2DSample(InputTexture, InputSampler, RowUV_2 ).rgb;
-    Color += Texture2DSample(InputTexture, InputSampler, RowUV_3 ).rgb;
+	return OutColor * ThresholdScale;
+}
 
-    Color += Texture2DSample(InputTexture, InputSampler, RowUV_4 ).rgb;
-    Color += Texture2DSample(InputTexture, InputSampler, RowUV_5 ).rgb;
-    Color += Texture2DSample(InputTexture, InputSampler, RowUV_6 ).rgb;
+void DownsamplePS(
+	in noperspective float4 UVAndScreenPos : TEXCOORD0,
+	out float3 OutColor : SV_Target0 )
+{
+	float2 InvPixelSize = (InputSizeAndInvInputSize.zw) * 0.5;
+	float2 UV = UVAndScreenPos.xy;
+	OutColor.rgb = Downsample( InputTexture, InputSampler, UV, InvPixelSize );
+}
 
-    Color += Texture2DSample(InputTexture, InputSampler, RowUV_7 ).rgb;
-    Color += Texture2DSample(InputTexture, InputSampler, RowUV_8 ).rgb;
-    Color += Texture2DSample(InputTexture, InputSampler, RowUV_9 ).rgb;
+Texture2D PreviousTexture;
+float4 PreviousSizeAndInvInputSize;
+float Radius;
 
-    OutColor.rgb += (Color / 9.0f) * 0.5f;
+float3 Upsample( Texture2D Texture, SamplerState Sampler, float2 UV, float2 PixelSize )
+{
+	const float2 Coords[9] = {
+		float2( -1.0f,  1.0f ), float2(  0.0f,  1.0f ), float2(  1.0f,  1.0f ),
+		float2( -1.0f,  0.0f ), float2(  0.0f,  0.0f ), float2(  1.0f,  0.0f ),
+		float2( -1.0f, -1.0f ), float2(  0.0f, -1.0f ), float2(  1.0f, -1.0f )
+	};
 
-    // Threshold
-    float Luminance = dot(OutColor.rgb, 1);
-    float ThresholdScale = saturate( (Luminance - ThresholdLevel) / ThresholdRange );
+	const float Weights[9] = {
+		0.0625f, 0.125f, 0.0625f,
+		0.125f,  0.25f,  0.125f,
+		0.0625f, 0.125f, 0.0625f
+	};
 
-    OutColor.rgb *= ThresholdScale;
+	float3 Color = float3( 0.0f, 0.0f, 0.0f );
+
+	UNROLL
+	for( int i = 0; i < 9; i++ )
+	{
+		float2 CurrentUV = UV + Coords[i] * PixelSize;
+		Color += Weights[i] * Texture2DSampleLevel(Texture, Sampler, CurrentUV, 0).rgb;
+	}
+
+	return Color;
+}
+
+void UpsampleCombinePS(
+	in noperspective float4 UVAndScreenPos : TEXCOORD0,
+	out float3 OutColor : SV_Target0 )
+{
+	float2 UV = UVAndScreenPos.xy;
+
+	float3 CurrentColor = Texture2DSampleLevel( InputTexture, InputSampler, UV * InputSizeAndInvInputSize.xy, 0).rgb;
+	float3 PreviousColor = Upsample( PreviousTexture, InputSampler, UV, PreviousSizeAndInvInputSize.zw );
+
+	OutColor.rgb = lerp(CurrentColor, PreviousColor, Radius);
 }
