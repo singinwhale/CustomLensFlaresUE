@@ -28,7 +28,7 @@ public:
 	void Initialize();
 
 private:
-	FScreenPassTexture HandleBloomFlaresHook(FRDGBuilder& GraphBuilder,const FViewInfo& View, FScreenPassTextureSlice SceneColor, const class FSceneDownsampleChain& DownsampleChain);
+	FScreenPassTexture HandleBloomFlaresHook(FRDGBuilder& GraphBuilder,const FViewInfo& View, FScreenPassTextureSlice SceneColor, const class FTextureDownsampleChain& DownsampleChain);
 	void InitStates();
 
 	FScreenPassTexture RenderThreshold(FRDGBuilder& GraphBuilder,

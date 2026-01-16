@@ -76,8 +76,8 @@ TAutoConsoleVariable<float> CVarBloomRadius(
 	ECVF_RenderThreadSafe
 	);
 
-DECLARE_GPU_STAT(CustomLensFlares)
-DECLARE_GPU_STAT(CustomBloomFlares)
+DECLARE_GPU_STAT(CustomLensFlares);
+DECLARE_GPU_STAT(CustomBloomFlares);
 
 namespace
 {
@@ -554,7 +554,7 @@ void FCustomLensFlareSceneViewExtension::BeginRenderViewFamily(FSceneViewFamily&
 void FCustomLensFlareSceneViewExtension::Initialize()
 {
 	FString ConfigPath;
-	if (GConfig->GetString(TEXT("CustomLensFlareSceneViewExtension"), TEXT("ConfigPath"), ConfigPath, GGameIni))
+	if (GConfig->GetString(TEXT("CustomLensFlareSceneViewExtension"), TEXT("ConfigPath"), ConfigPath, GEngineIni))
 	{
 		UCustomLensFlareConfig* LoadedConfig = LoadObject<UCustomLensFlareConfig>(nullptr, *ConfigPath);
 		check(LoadedConfig);
@@ -568,7 +568,7 @@ void FCustomLensFlareSceneViewExtension::Initialize()
 	}
 }
 
-FScreenPassTexture FCustomLensFlareSceneViewExtension::HandleBloomFlaresHook(FRDGBuilder& GraphBuilder, const FViewInfo& View, FScreenPassTextureSlice SceneColor, const class FSceneDownsampleChain& DownsampleChain)
+FScreenPassTexture FCustomLensFlareSceneViewExtension::HandleBloomFlaresHook(FRDGBuilder& GraphBuilder, const FViewInfo& View, FScreenPassTextureSlice SceneColor, const FTextureDownsampleChain& DownsampleChain)
 {
 	if (!SceneColor.IsValid())
 		return {};

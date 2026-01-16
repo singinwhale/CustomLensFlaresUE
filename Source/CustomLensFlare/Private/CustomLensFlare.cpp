@@ -11,7 +11,7 @@
 void FCustomLensFlareModule::StartupModule()
 {
 	FCoreDelegates::OnPostEngineInit.AddRaw(this, &FCustomLensFlareModule::SetupCustomLensFlares);
-	if (GEngine && GEngine->IsInitialized())
+	if (IsEngineStartupModuleLoadingComplete())
 	{
 		SetupCustomLensFlares();
 	}
