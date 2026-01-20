@@ -74,7 +74,7 @@ Patches are for Unreal 5.5.4
 
 ## Ini Changes
 
-Reference a settings data asset in your `DefaultGame.ini`. There is one shipped with the project that you can put into your ini file. 
+Reference a settings data asset in your `DefaultEngine.ini`. There is one shipped with the project that you can put into your ini file. 
 
 ```ini
 [CustomLensFlareSceneViewExtension]
