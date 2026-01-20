@@ -6,6 +6,7 @@
 #include "ScreenPass.h"
 #include "Runtime/Engine/Public/SceneViewExtension.h"
 #include "CustomLensFlareConfig.h"
+#include "CustomLensFlareSceneViewExtensionData.h"
 
 struct FLensFlareInputs;
 
@@ -30,6 +31,7 @@ public:
 private:
 	FScreenPassTexture HandleBloomFlaresHook(FRDGBuilder& GraphBuilder,const FViewInfo& View, FScreenPassTextureSlice SceneColor, const class FTextureDownsampleChain& DownsampleChain);
 	void InitStates();
+	static const FCustomLensFlareSceneViewExtensionData::FPerViewExtensionData* GetPerViewExtensionData(const FSceneView& View);
 
 	FScreenPassTexture RenderThreshold(FRDGBuilder& GraphBuilder,
 		FScreenPassTexture InputTexture,

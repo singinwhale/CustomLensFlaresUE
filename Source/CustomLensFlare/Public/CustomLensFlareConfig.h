@@ -24,7 +24,7 @@ struct FLensFlareGhostSettings
  * 
  */
 UCLASS()
-class CUSTOMLENSFLARE_API UCustomLensFlareConfig : public UDataAsset
+class CUSTOMLENSFLARE_API UCustomLensFlareConfig : public UDataAsset, public IBlendableInterface
 {
 	GENERATED_BODY()
 
@@ -116,4 +116,6 @@ public:
 
 	UPROPERTY(EditAnywhere, Category="Flare", meta=(UIMin = "0", UIMax = "1"))
 	float FlareIntensity = 1.0;
+
+	virtual void OverrideBlendableSettings(class FSceneView& View, float Weight) const override;
 };

@@ -4,6 +4,7 @@
 
 #include "CustomLensFlare.h"
 #include "CustomLensFlareConfig.h"
+#include "CustomLensFlareSceneViewExtensionData.h"
 #include "SceneRendering.h"
 #include "ScreenPass.h"
 #include "PostProcess/PostProcessing.h"
@@ -501,27 +502,27 @@ namespace
 	};
 
 	IMPLEMENT_GLOBAL_SHADER(FLensFlareBloomMixPS, "/Plugin/CustomLensFlare/Mix.usf", "MixPS", SF_Pixel);
-	
+
 	FVector4f SizeToSizeAndInvSize(FIntPoint PixelSize)
 	{
 		check(PixelSize.X != 0);
 		check(PixelSize.Y != 0);
 		return FVector4f(PixelSize.X, PixelSize.Y, 1.0 / PixelSize.X, 1.0 / PixelSize.Y);
 	}
-	
+
 	FVector4f SizeToSizeAndInvSize(FIntVector PixelSize)
 	{
 		return SizeToSizeAndInvSize({PixelSize.X, PixelSize.Y});
 	}
-	
+
 	FVector4f ViewToUVScaleAndPixelSize(FIntRect Viewport, FIntPoint FullSize)
 	{
-		return FVector4f(Viewport.Width() / FullSize.X, Viewport.Height() / FullSize.Y, 1.0 / FullSize.X, 1.0/FullSize.Y);
+		return FVector4f(Viewport.Width() / FullSize.X, Viewport.Height() / FullSize.Y, 1.0 / FullSize.X, 1.0 / FullSize.Y);
 	}
 }
 
 
-FCustomLensFlareSceneViewExtension::FCustomLensFlareSceneViewExtension(const FAutoRegister& AutoRegister):
+FCustomLensFlareSceneViewExtension::FCustomLensFlareSceneViewExtension(const FAutoRegister& AutoRegister) :
 	FSceneViewExtensionBase(AutoRegister)
 {
 }
@@ -541,10 +542,12 @@ bool FCustomLensFlareSceneViewExtension::IsActiveThisFrame_Internal(const FScene
 
 void FCustomLensFlareSceneViewExtension::SetupViewFamily(FSceneViewFamily& InViewFamily)
 {
+	InViewFamily.GetOrCreateExtentionData<FCustomLensFlareSceneViewExtensionData>();
 }
 
 void FCustomLensFlareSceneViewExtension::SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView)
 {
+	InViewFamily.GetExtentionData<FCustomLensFlareSceneViewExtensionData>()->GetOrCreateViewExtensionData(InView);
 }
 
 void FCustomLensFlareSceneViewExtension::BeginRenderViewFamily(FSceneViewFamily& InViewFamily)
@@ -561,10 +564,9 @@ void FCustomLensFlareSceneViewExtension::Initialize()
 		Config = TStrongObjectPtr(LoadedConfig);
 
 		ENQUEUE_RENDER_COMMAND(BindBloomFlaresHook)([this](FRHICommandListImmediate&)
-			{
-				BloomFlaresHook.BindSP(this, &FCustomLensFlareSceneViewExtension::HandleBloomFlaresHook);
-			}
-			);
+		{
+			BloomFlaresHook.BindSP(this, &FCustomLensFlareSceneViewExtension::HandleBloomFlaresHook);
+		});
 	}
 }
 
@@ -572,7 +574,9 @@ FScreenPassTexture FCustomLensFlareSceneViewExtension::HandleBloomFlaresHook(FRD
 {
 	if (!SceneColor.IsValid())
 		return {};
-	
+
+	const FCustomLensFlareSceneViewExtensionData::FPerViewExtensionData* PerViewExtensionData = GetPerViewExtensionData(View);
+
 	RDG_GPU_STAT_SCOPE(GraphBuilder, CustomBloomFlares)
 	RDG_EVENT_SCOPE(GraphBuilder, "CustomBloomFlares");
 
@@ -586,7 +590,7 @@ FScreenPassTexture FCustomLensFlareSceneViewExtension::HandleBloomFlaresHook(FRD
 		int32 MinScreenDim = SceneColor.ViewRect.Size().GetMin();
 		int32 DesiredPassAmount = FMath::Log2(MinScreenDim / MinDownsampleSize);
 		PassAmount = FMath::Min(PassAmount, DesiredPassAmount);
-	} 
+	}
 
 	// Buffers setup
 	const FScreenPassTexture BlackDummy{
@@ -665,7 +669,7 @@ FScreenPassTexture FCustomLensFlareSceneViewExtension::HandleBloomFlaresHook(FRD
 
 		const FString MixPassName(TEXT("Mix"));
 
-		float BloomIntensity = Config->Intensity * View.FinalPostProcessSettings.BloomIntensity;
+		float BloomIntensity = PerViewExtensionData->Intensity * View.FinalPostProcessSettings.BloomIntensity;
 
 		// If the internal blending for the upsample pass is additive
 		// (aka not using the lerp) then uncomment this line to
@@ -709,14 +713,14 @@ FScreenPassTexture FCustomLensFlareSceneViewExtension::HandleBloomFlaresHook(FRD
 
 		// Flare
 		PassParameters->Pass.InputTexture = BlackDummy.Texture;
-		PassParameters->FlareIntensity = Config->FlareIntensity;
-		PassParameters->FlareTint = FVector4f(Config->FlareTint);
+		PassParameters->FlareIntensity = PerViewExtensionData->FlareIntensity;
+		PassParameters->FlareTint = FVector4f(PerViewExtensionData->FlareTint);
 		PassParameters->FlareGradientTexture = GWhiteTexture->TextureRHI;
 		PassParameters->FlareGradientSampler = BilinearClampSampler;
 
-		if (Config->Gradient != nullptr)
+		if (PerViewExtensionData->Gradient != nullptr)
 		{
-			const FTextureRHIRef TextureRHI = Config->Gradient->GetResource()->TextureRHI;
+			const FTextureRHIRef TextureRHI = PerViewExtensionData->Gradient->GetResource()->TextureRHI;
 			PassParameters->FlareGradientTexture = TextureRHI;
 		}
 
@@ -768,12 +772,21 @@ void FCustomLensFlareSceneViewExtension::InitStates()
 	NearestRepeatSampler = TStaticSamplerState<SF_Point, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 }
 
+const FCustomLensFlareSceneViewExtensionData::FPerViewExtensionData* FCustomLensFlareSceneViewExtension::GetPerViewExtensionData(const FSceneView& View)
+{
+	const FCustomLensFlareSceneViewExtensionData* CustomLensFlareSceneViewExtensionData = View.Family->GetExtentionData<FCustomLensFlareSceneViewExtensionData>();
+	const FCustomLensFlareSceneViewExtensionData::FPerViewExtensionData* PerViewExtensionData = CustomLensFlareSceneViewExtensionData->GetViewExtensionData(View);
+	return PerViewExtensionData;
+}
+
 
 FScreenPassTexture FCustomLensFlareSceneViewExtension::RenderThreshold(FRDGBuilder& GraphBuilder, FScreenPassTexture InputTexture, const FViewInfo& View)
 {
 	RDG_EVENT_SCOPE(GraphBuilder, "ThresholdPass");
 
 	FScreenPassTexture OutputTexture = FScreenPassTexture();
+
+	const FCustomLensFlareSceneViewExtensionData::FPerViewExtensionData* PerViewExtensionData = GetPerViewExtensionData(View);
 
 	FIntRect Viewport = View.ViewRect;
 	FIntRect Viewport2 = InputTexture.ViewRect;
@@ -799,8 +812,8 @@ FScreenPassTexture FCustomLensFlareSceneViewExtension::RenderThreshold(FRDGBuild
 		PassParameters->RenderTargets[0] = FRenderTargetBinding(Texture, ERenderTargetLoadAction::ENoAction);
 		PassParameters->InputSampler = BilinearClampSampler;
 		PassParameters->InputSizeAndInvInputSize = SizeToSizeAndInvSize(InputTexture.ViewRect.Size());
-		PassParameters->ThresholdLevel = Config->ThresholdLevel;
-		PassParameters->ThresholdRange = Config->ThresholdRange;
+		PassParameters->ThresholdLevel = PerViewExtensionData->ThresholdLevel;
+		PassParameters->ThresholdRange = PerViewExtensionData->ThresholdRange;
 
 		DrawSplitResolutionPass(
 			GraphBuilder,
@@ -827,6 +840,7 @@ FScreenPassTexture FCustomLensFlareSceneViewExtension::RenderThreshold(FRDGBuild
 FScreenPassTexture FCustomLensFlareSceneViewExtension::RenderFlare(FRDGBuilder& GraphBuilder, FScreenPassTextureSlice& BloomTexture, const FViewInfo& View)
 {
 	RDG_EVENT_SCOPE(GraphBuilder, "FlarePass");
+	const FCustomLensFlareSceneViewExtensionData::FPerViewExtensionData* PerViewExtensionData = GetPerViewExtensionData(View);
 
 	FScreenPassTexture OutputTexture = FScreenPassTexture();
 
@@ -862,7 +876,7 @@ FScreenPassTexture FCustomLensFlareSceneViewExtension::RenderFlare(FRDGBuilder& 
 		PassParameters->InputTexture = BloomTexture.TextureSRV;
 		PassParameters->RenderTargets[0] = FRenderTargetBinding(ChromaTexture, ERenderTargetLoadAction::ENoAction);
 		PassParameters->InputSampler = BilinearBorderSampler;
-		PassParameters->ChromaShift = Config->GhostChromaShift;
+		PassParameters->ChromaShift = PerViewExtensionData->GhostChromaShift;
 
 		// Render
 		DrawShaderPass(
@@ -896,25 +910,25 @@ FScreenPassTexture FCustomLensFlareSceneViewExtension::RenderFlare(FRDGBuilder& 
 		PassParameters->Pass.InputTexture = ChromaTexture;
 		PassParameters->Pass.RenderTargets[0] = FRenderTargetBinding(Texture, ERenderTargetLoadAction::ENoAction);
 		PassParameters->InputSampler = BilinearBorderSampler;
-		PassParameters->Intensity = Config->GhostIntensity;
+		PassParameters->Intensity = PerViewExtensionData->GhostIntensity;
 
-		PassParameters->GhostColors[0] = Config->Ghost1.Color;
-		PassParameters->GhostColors[1] = Config->Ghost2.Color;
-		PassParameters->GhostColors[2] = Config->Ghost3.Color;
-		PassParameters->GhostColors[3] = Config->Ghost4.Color;
-		PassParameters->GhostColors[4] = Config->Ghost5.Color;
-		PassParameters->GhostColors[5] = Config->Ghost6.Color;
-		PassParameters->GhostColors[6] = Config->Ghost7.Color;
-		PassParameters->GhostColors[7] = Config->Ghost8.Color;
+		PassParameters->GhostColors[0] = PerViewExtensionData->Ghost1.Color;
+		PassParameters->GhostColors[1] = PerViewExtensionData->Ghost2.Color;
+		PassParameters->GhostColors[2] = PerViewExtensionData->Ghost3.Color;
+		PassParameters->GhostColors[3] = PerViewExtensionData->Ghost4.Color;
+		PassParameters->GhostColors[4] = PerViewExtensionData->Ghost5.Color;
+		PassParameters->GhostColors[5] = PerViewExtensionData->Ghost6.Color;
+		PassParameters->GhostColors[6] = PerViewExtensionData->Ghost7.Color;
+		PassParameters->GhostColors[7] = PerViewExtensionData->Ghost8.Color;
 
-		GET_SCALAR_ARRAY_ELEMENT(PassParameters->GhostScales, 0) = Config->Ghost1.Scale;
-		GET_SCALAR_ARRAY_ELEMENT(PassParameters->GhostScales, 1) = Config->Ghost2.Scale;
-		GET_SCALAR_ARRAY_ELEMENT(PassParameters->GhostScales, 2) = Config->Ghost3.Scale;
-		GET_SCALAR_ARRAY_ELEMENT(PassParameters->GhostScales, 3) = Config->Ghost4.Scale;
-		GET_SCALAR_ARRAY_ELEMENT(PassParameters->GhostScales, 4) = Config->Ghost5.Scale;
-		GET_SCALAR_ARRAY_ELEMENT(PassParameters->GhostScales, 5) = Config->Ghost6.Scale;
-		GET_SCALAR_ARRAY_ELEMENT(PassParameters->GhostScales, 6) = Config->Ghost7.Scale;
-		GET_SCALAR_ARRAY_ELEMENT(PassParameters->GhostScales, 7) = Config->Ghost8.Scale;
+		GET_SCALAR_ARRAY_ELEMENT(PassParameters->GhostScales, 0) = PerViewExtensionData->Ghost1.Scale;
+		GET_SCALAR_ARRAY_ELEMENT(PassParameters->GhostScales, 1) = PerViewExtensionData->Ghost2.Scale;
+		GET_SCALAR_ARRAY_ELEMENT(PassParameters->GhostScales, 2) = PerViewExtensionData->Ghost3.Scale;
+		GET_SCALAR_ARRAY_ELEMENT(PassParameters->GhostScales, 3) = PerViewExtensionData->Ghost4.Scale;
+		GET_SCALAR_ARRAY_ELEMENT(PassParameters->GhostScales, 4) = PerViewExtensionData->Ghost5.Scale;
+		GET_SCALAR_ARRAY_ELEMENT(PassParameters->GhostScales, 5) = PerViewExtensionData->Ghost6.Scale;
+		GET_SCALAR_ARRAY_ELEMENT(PassParameters->GhostScales, 6) = PerViewExtensionData->Ghost7.Scale;
+		GET_SCALAR_ARRAY_ELEMENT(PassParameters->GhostScales, 7) = PerViewExtensionData->Ghost8.Scale;
 
 		// Render
 		DrawShaderPass(
@@ -941,11 +955,11 @@ FScreenPassTexture FCustomLensFlareSceneViewExtension::RenderFlare(FRDGBuilder& 
 		PassParameters->InputTexture = BloomTexture.TextureSRV;
 		PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture.Texture, ERenderTargetLoadAction::ELoad);
 		PassParameters->InputSampler = BilinearBorderSampler;
-		PassParameters->Intensity = Config->HaloIntensity;
-		PassParameters->Width = Config->HaloWidth;
-		PassParameters->Mask = Config->HaloMask;
-		PassParameters->Compression = Config->HaloCompression;
-		PassParameters->ChromaShift = Config->HaloChromaShift;
+		PassParameters->Intensity = PerViewExtensionData->HaloIntensity;
+		PassParameters->Width = PerViewExtensionData->HaloWidth;
+		PassParameters->Mask = PerViewExtensionData->HaloMask;
+		PassParameters->Compression = PerViewExtensionData->HaloCompression;
+		PassParameters->ChromaShift = PerViewExtensionData->HaloChromaShift;
 
 		DrawShaderPass(
 			GraphBuilder,
@@ -973,6 +987,7 @@ FScreenPassTexture FCustomLensFlareSceneViewExtension::RenderFlare(FRDGBuilder& 
 FScreenPassTexture FCustomLensFlareSceneViewExtension::RenderGlare(FRDGBuilder& GraphBuilder, FScreenPassTextureSlice& BloomTexture, const FViewInfo& View)
 {
 	RDG_EVENT_SCOPE(GraphBuilder, "GlarePass");
+	const FCustomLensFlareSceneViewExtensionData::FPerViewExtensionData* PerViewExtensionData = GetPerViewExtensionData(View);
 
 	FScreenPassTexture OutputTexture = FScreenPassTexture();
 
@@ -983,7 +998,7 @@ FScreenPassTexture FCustomLensFlareSceneViewExtension::RenderGlare(FRDGBuilder& 
 		View.ViewRect.Height() / 4
 		);
 	// Only render the Glare if its intensity is different from 0
-	if (Config->GlareIntensity > SMALL_NUMBER)
+	if (PerViewExtensionData->GlareIntensity > SMALL_NUMBER)
 	{
 		const FString LensFlareGlarePassName(TEXT("LensFlareGlare"));
 
@@ -1037,24 +1052,24 @@ FScreenPassTexture FCustomLensFlareSceneViewExtension::RenderGlare(FRDGBuilder& 
 		GeometryParameters->BufferSize = BufferSize;
 		GeometryParameters->BufferRatio = BufferRatio;
 		GeometryParameters->PixelSize = PixelSize;
-		GeometryParameters->GlareIntensity = Config->GlareIntensity;
-		GeometryParameters->GlareTint = FVector4f(Config->GlareTint);
-		GET_SCALAR_ARRAY_ELEMENT(GeometryParameters->GlareScales, 0) = Config->GlareScale.X;
-		GET_SCALAR_ARRAY_ELEMENT(GeometryParameters->GlareScales, 1) = Config->GlareScale.Y;
-		GET_SCALAR_ARRAY_ELEMENT(GeometryParameters->GlareScales, 2) = Config->GlareScale.Z;
-		GET_SCALAR_ARRAY_ELEMENT(GeometryParameters->GlareAngles, 0) = Config->GlareAngles.X;
-		GET_SCALAR_ARRAY_ELEMENT(GeometryParameters->GlareAngles, 1) = Config->GlareAngles.Y;
-		GET_SCALAR_ARRAY_ELEMENT(GeometryParameters->GlareAngles, 2) = Config->GlareAngles.Z;
-		GeometryParameters->GlareDivider = FMath::Max(Config->GlareDivider, 0.01f);
+		GeometryParameters->GlareIntensity = PerViewExtensionData->GlareIntensity;
+		GeometryParameters->GlareTint = FVector4f(PerViewExtensionData->GlareTint);
+		GET_SCALAR_ARRAY_ELEMENT(GeometryParameters->GlareScales, 0) = PerViewExtensionData->GlareScale.X;
+		GET_SCALAR_ARRAY_ELEMENT(GeometryParameters->GlareScales, 1) = PerViewExtensionData->GlareScale.Y;
+		GET_SCALAR_ARRAY_ELEMENT(GeometryParameters->GlareScales, 2) = PerViewExtensionData->GlareScale.Z;
+		GET_SCALAR_ARRAY_ELEMENT(GeometryParameters->GlareAngles, 0) = PerViewExtensionData->GlareAngles.X;
+		GET_SCALAR_ARRAY_ELEMENT(GeometryParameters->GlareAngles, 1) = PerViewExtensionData->GlareAngles.Y;
+		GET_SCALAR_ARRAY_ELEMENT(GeometryParameters->GlareAngles, 2) = PerViewExtensionData->GlareAngles.Z;
+		GeometryParameters->GlareDivider = FMath::Max(PerViewExtensionData->GlareDivider, 0.01f);
 
 		// Pixel shader
 		FLensFlareGlarePS::FParameters* PixelParameters = GraphBuilder.AllocParameters<FLensFlareGlarePS::FParameters>();
 		PixelParameters->GlareSampler = BilinearClampSampler;
 		PixelParameters->GlareTexture = GWhiteTexture->TextureRHI;
 
-		if (Config->GlareLineMask != nullptr)
+		if (PerViewExtensionData->GlareLineMask != nullptr)
 		{
-			const FTextureRHIRef TextureRHI = Config->GlareLineMask->GetResource()->TextureRHI;
+			const FTextureRHIRef TextureRHI = PerViewExtensionData->GlareLineMask->GetResource()->TextureRHI;
 			PixelParameters->GlareTexture = TextureRHI;
 		}
 
@@ -1253,7 +1268,7 @@ FScreenPassTextureSlice FCustomLensFlareSceneViewExtension::FBloomFlareProcess::
 		const FString PassName = "Downsample_"
 			+ FString::FromInt(i)
 			+ "_(1/"
-			+ FString::FromInt(Divider*2)
+			+ FString::FromInt(Divider * 2)
 			+ ")_"
 			+ FString::FromInt(Size.Width())
 			+ "x"
@@ -1317,7 +1332,7 @@ FScreenPassTextureSlice FCustomLensFlareSceneViewExtension::FBloomFlareProcess::
 			MipMapsUpsample[i + 1], // Previous texture,
 			Radius
 			);
-		
+
 		MipMapsUpsample[i] = ResultTexture;
 	}
 
@@ -1326,6 +1341,7 @@ FScreenPassTextureSlice FCustomLensFlareSceneViewExtension::FBloomFlareProcess::
 
 FScreenPassTextureSlice FCustomLensFlareSceneViewExtension::FBloomFlareProcess::RenderDownsample(FRDGBuilder& GraphBuilder, const FString& PassName, const FViewInfo& View, FScreenPassTextureSlice InputTexture, const FIntRect& Viewport)
 {
+	const FCustomLensFlareSceneViewExtensionData::FPerViewExtensionData* PerViewExtensionData = GetPerViewExtensionData(View);
 	// Build texture
 	FRDGTextureDesc Description = InputTexture.TextureSRV->GetParent()->Desc;
 	Description.Reset();
@@ -1346,7 +1362,7 @@ FScreenPassTextureSlice FCustomLensFlareSceneViewExtension::FBloomFlareProcess::
 	FIntVector ParentPixelSize = InputTexture.TextureSRV->GetParent()->Desc.GetSize();
 	PassParameters->InputSizeAndInvInputSize = SizeToSizeAndInvSize(ParentPixelSize);
 	PassParameters->ThresholdLevel = View.FinalPostProcessSettings.BloomThreshold;
-	PassParameters->ThresholdRange = OwningExtension.Config->ThresholdRange;
+	PassParameters->ThresholdRange = PerViewExtensionData->ThresholdRange;
 
 	DrawSplitResolutionPass(
 		GraphBuilder,
