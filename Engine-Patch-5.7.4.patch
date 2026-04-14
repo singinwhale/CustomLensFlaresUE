@@ -1,0 +1,61 @@
+From 64f6bca7f50a087b55fb555dd531979d7d132019 Mon Sep 17 00:00:00 2001
+From: singinwhale <singinwhale@singinwhale.com>
+Date: Tue, 14 Apr 2026 22:30:18 +0200
+Subject: [PATCH] Custom Lens Flares Patch
+
+---
+ .../Private/PostProcess/PostProcessing.cpp       | 16 ++++++++++++++++
+ .../Private/PostProcess/PostProcessing.h         |  6 ++++++
+ 2 files changed, 22 insertions(+)
+
+diff --git a/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.cpp b/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.cpp
+index 52b33ad937bb..31927cf9f9ca 100644
+--- a/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.cpp
++++ b/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.cpp
+@@ -180,6 +180,17 @@ TAutoConsoleVariable<int32> CVarUserSceneTextureDebug(
+ #endif
+ }
+ 
++
++// - Custom Lens Flare
++TAutoConsoleVariable<int32> CVarCustomBloomFlareMode(
++	  TEXT("r.PostProcessing.CustomBloomFlareMode"),
++	  1,
++	  TEXT("If set to 1, use external Bloom/Lens-flares rendering if available"),
++	  ECVF_Scalability | ECVF_RenderThreadSafe);
++
++FLensFlaresHook BloomFlaresHook;
++// --
++
+ #if WITH_EDITOR
+ static void AddGBufferPicking(FRDGBuilder& GraphBuilder, const FViewInfo& View, const TRDGUniformBufferRef<FSceneTextureUniformParameters>& SceneTextures);
+ #endif 
+@@ -1293,6 +1304,11 @@ void AddPostProcessingPasses(
+ 
+ 		FScreenPassTexture Bloom;
+ 		FRDGBufferRef SceneColorApplyParameters = nullptr;
++		if (bBloomEnabled && (CVarCustomBloomFlareMode.GetValueOnAnyThread() > 0) && BloomFlaresHook.IsBound())
++		{
++			Bloom = BloomFlaresHook.Execute(GraphBuilder, View, SceneColorSlice, SceneDownsampleChain);
++		}
++		else
+ 		if (bBloomEnabled)
+ 		{
+ 			const FTextureDownsampleChain* LensFlareSceneDownsampleChain;
+diff --git a/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.h b/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.h
+index 14bc3f51aea3..8437865c1faa 100644
+--- a/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.h
++++ b/Engine/Source/Runtime/Renderer/Private/PostProcess/PostProcessing.h
+@@ -75,3 +75,9 @@ void AddMobilePostProcessingPasses(FRDGBuilder& GraphBuilder, FScene* Scene, con
+ void AddBasicPostProcessPasses(FRDGBuilder& GraphBuilder, const FViewInfo& View);
+ 
+ FRDGTextureRef AddProcessPlanarReflectionPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef SceneColorTexture);
++
++
++DECLARE_DELEGATE_RetVal_FourParams( FScreenPassTexture, FLensFlaresHook, FRDGBuilder&, const FViewInfo&, FScreenPassTextureSlice, const class FTextureDownsampleChain&);
++// Delegate that you can bind to override the bloom rendering process in the engine and provide your own implementation.
++extern RENDERER_API FLensFlaresHook BloomFlaresHook;
++// --
+-- 
+2.52.0.windows.1
+
